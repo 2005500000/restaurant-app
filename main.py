@@ -1,46 +1,65 @@
+# main.py
+# Полное консольное приложение для управления рестораном
+# Использует класс RestaurantApp из restaurant_app.py
+
 from restaurant_app import RestaurantApp
+import sqlite3
+from db_config import DATABASE_FILE
+
 
 def print_menu_items(menu_items):
     print("\n" + "=" * 70)
     print("СПИСОК БЛЮД")
     print("ID | Название | Цена | Вес | Категория")
     for item in menu_items:
-        print(f"{item['idBluda']:2} | {item['name']:30} | {item['cost']:4} | {item['Weight']:3} | {item['Category_name']}")
+        print(
+            f"{item['idBluda']:2} | {item['name']:30} | {item['cost']:4} | {item['Weight']:3} | {item['Category_name']}")
     print("=" * 70)
+
 
 def print_categories(categories):
     print("\n--- КАТЕГОРИИ ---")
     for cat in categories:
         print(f"{cat['idCategory']} - {cat['Category_name']}")
 
+
 def print_clients(clients):
     print("\n--- КЛИЕНТЫ ---")
     for c in clients:
-        print(f"{c['idClient']}: {c['FIO']} | тел:{c['Phone']} | email:{c['Email']} | посещений:{c['Kolitchestvo_poseshenii']}")
+        print(
+            f"{c['idClient']}: {c['FIO']} | тел:{c['Phone']} | email:{c['Email']} | посещений:{c['Kolitchestvo_poseshenii']}")
+
 
 def print_staff(staff_list):
     print("\n--- СОТРУДНИКИ ---")
     for s in staff_list:
         print(f"{s['Staff_id']}: {s['FIO']} | {s['Dolzhnost_name']} | з/п {s['Salary']} | принят {s['DataPrioma']}")
 
+
 def print_postavshiki(post_list):
     print("\n--- ПОСТАВЩИКИ ---")
     for p in post_list:
-        print(f"{p['idPostavshika']}: {p['Company_name']} | тел:{p['phone']} | адрес:{p['adres']} | условия:{p['YsloviaOplatv']}")
+        print(
+            f"{p['idPostavshika']}: {p['Company_name']} | тел:{p['phone']} | адрес:{p['adres']} | условия:{p['YsloviaOplatv']}")
+
 
 def print_orders(orders):
     print("\n--- ЗАКАЗЫ ---")
     for o in orders:
-        print(f"Заказ {o['idZakaz']}: стол {o['table_number']}, {o['data_and_time']}, клиент {o['ClientName']}, официант {o['StaffName']}, статус {o['Status']}, сумма {o['TotalSum']}")
+        print(
+            f"Заказ {o['idZakaz']}: стол {o['table_number']}, {o['data_and_time']}, клиент {o['ClientName']}, официант {o['StaffName']}, статус {o['Status']}, сумма {o['TotalSum']}")
+
 
 def print_dolzhnosti(dolzh_list):
     print("\n--- ДОЛЖНОСТИ ---")
     for d in dolzh_list:
         print(f"{d['idDolzhnost']} - {d['Dolzhnost_name']}")
 
+
 def main():
     app = RestaurantApp()
     print("Добро пожаловать в систему управления рестораном!")
+    print(f"Подключено к БД: {DATABASE_FILE}")
 
     while True:
         print("\n" + "=" * 50)
@@ -53,6 +72,7 @@ def main():
         print("6.  Работа с заказами")
         print("7.  Аналитика: топ популярных блюд")
         print("8.  Аналитика: выручка сотрудника за период")
+        print("9.  Диагностика выручки (проверка данных)")
         print("0.  Выход")
         print("=" * 50)
 
@@ -221,7 +241,6 @@ def main():
                     print_staff(staff)
                 elif sub == '2':
                     try:
-                        # показать должности
                         dolzh = app.get_all_dolzhnosti()
                         print_dolzhnosti(dolzh)
                         dolzh_id = int(input("ID должности: "))
@@ -324,22 +343,36 @@ def main():
                     try:
                         # список клиентов
                         clients = app.get_all_clients()
-                        print("\n--- СПИСОК КЛИЕНТОВ ---")
+                        print("\n--- КЛИЕНТЫ ---")
                         for c in clients:
                             print(f"{c['idClient']} – {c['FIO']}")
-                        client_id = int(input("Введите ID клиента: "))
+                        client_id = int(input("ID клиента: "))
 
                         # список сотрудников
                         staff_list = app.get_all_staff()
-                        print("\n--- СПИСОК СОТРУДНИКОВ ---")
+                        print("\n--- СОТРУДНИКИ ---")
                         for s in staff_list:
                             print(f"{s['Staff_id']} – {s['FIO']} ({s['Dolzhnost_name']})")
-                        staff_id = int(input("Введите ID официанта: "))
+                        staff_id = int(input("ID официанта: "))
 
                         table = int(input("Номер стола: "))
                         status = input("Статус (Новый/В процессе/Оплачен/Завершен): ")
-                        new_id = app.add_order(table, client_id, staff_id, status)
-                        print(f"✅ Заказ создан с ID {new_id}")
+
+                        # Добавление позиций заказа
+                        items = []
+                        print("\n--- ДОБАВЛЕНИЕ ПОЗИЦИЙ ЗАКАЗА ---")
+                        menu = app.get_all_menu()
+                        for dish in menu:
+                            print(f"{dish['idBluda']} – {dish['name']} | {dish['cost']} руб.")
+                        while True:
+                            dish_id = input("Введите ID блюда (или 0, чтобы закончить): ")
+                            if dish_id == '0':
+                                break
+                            qty = int(input("Количество: "))
+                            items.append((int(dish_id), qty))
+
+                        new_id = app.add_order(table, client_id, staff_id, status, items)
+                        print(f"✅ Заказ создан с ID {new_id}, сумма будет рассчитана автоматически.")
                     except Exception as e:
                         print(f"Ошибка: {e}")
                 elif sub == '3':
@@ -384,7 +417,7 @@ def main():
                 print(f"Ошибка: {e}")
 
         elif choice == '8':
-            # АНАЛИТИКА: ВЫРУЧКА СОТРУДНИКА ЗА ПЕРИОД
+            # АНАЛИТИКА: ВЫРУЧКА СОТРУДНИКА
             try:
                 staff_id = int(input("Введите ID сотрудника: "))
                 start = input("Дата начала (ГГГГ-ММ-ДД): ")
@@ -394,12 +427,47 @@ def main():
             except Exception as e:
                 print(f"Ошибка: {e}")
 
+        elif choice == '9':
+            # ДИАГНОСТИКА ВЫРУЧКИ
+            conn = sqlite3.connect(DATABASE_FILE)
+            cursor = conn.cursor()
+            print("\n=== ДИАГНОСТИКА ВЫРУЧКИ ===")
+            cursor.execute("SELECT COUNT(*) FROM Zakaz WHERE Status = 'Завершен'")
+            count = cursor.fetchone()[0]
+            print(f"1. Всего завершённых заказов: {count}")
+            cursor.execute(
+                "SELECT idZakaz, Status, idSotrudnika, data_and_time FROM Zakaz WHERE Status = 'Завершен' LIMIT 5")
+            rows = cursor.fetchall()
+            print("2. Примеры завершённых заказов:")
+            for row in rows:
+                print(f"   idZakaz={row[0]}, статус='{row[1]}', сотрудник={row[2]}, дата={row[3]}")
+            if rows:
+                zakaz_ids = [str(r[0]) for r in rows]
+                cursor.execute(f"SELECT COUNT(*) FROM SostavZakaza WHERE idZakaza IN ({','.join(zakaz_ids)})")
+                pos_count = cursor.fetchone()[0]
+                print(f"3. Позиций в SostavZakaza для этих заказов: {pos_count}")
+            staff_id = input("Введите ID сотрудника для теста (например, 1): ")
+            start = input("Дата начала (ГГГГ-ММ-ДД): ")
+            end = input("Дата конца (ГГГГ-ММ-ДД): ")
+            cursor.execute("""
+                SELECT COALESCE(SUM(sz.Cost * sz.Kolitchestvo), 0) AS revenue
+                FROM Staff s
+                LEFT JOIN Zakaz z ON s.Staff_id = z.idSotrudnika AND z.Status = 'Завершен'
+                LEFT JOIN SostavZakaza sz ON z.idZakaz = sz.idZakaza
+                WHERE s.Staff_id = ?
+                  AND DATE(z.data_and_time) BETWEEN ? AND ?
+            """, (staff_id, start, end))
+            revenue = cursor.fetchone()[0]
+            print(f"4. Выручка по функции: {revenue}")
+            conn.close()
+            input("Нажмите Enter для продолжения...")
+
         elif choice == '0':
             print("До свидания!")
             break
-
         else:
             print("Неверный ввод. Попробуйте снова.")
+
 
 if __name__ == "__main__":
     main()
