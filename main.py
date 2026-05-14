@@ -1,7 +1,3 @@
-# main.py
-# Полное консольное приложение для управления рестораном
-# Использует класс RestaurantApp из restaurant_app.py
-
 from restaurant_app import RestaurantApp
 
 def print_menu_items(menu_items):
@@ -328,17 +324,22 @@ def main():
                     try:
                         # список клиентов
                         clients = app.get_all_clients()
-                        print_clients(clients)
-                        client_id = int(input("ID клиента: "))
+                        print("\n--- СПИСОК КЛИЕНТОВ ---")
+                        for c in clients:
+                            print(f"{c['idClient']} – {c['FIO']}")
+                        client_id = int(input("Введите ID клиента: "))
+
                         # список сотрудников
                         staff_list = app.get_all_staff()
-                        print_staff(staff_list)
-                        staff_id = int(input("ID официанта: "))
+                        print("\n--- СПИСОК СОТРУДНИКОВ ---")
+                        for s in staff_list:
+                            print(f"{s['Staff_id']} – {s['FIO']} ({s['Dolzhnost_name']})")
+                        staff_id = int(input("Введите ID официанта: "))
+
                         table = int(input("Номер стола: "))
                         status = input("Статус (Новый/В процессе/Оплачен/Завершен): ")
-                        # можно добавить позиции заказа, но для простоты оставим пустым
-                        new_id = app.add_order(table, client_id, staff_id, status, items=None)
-                        print(f"✅ Заказ создан с ID = {new_id}")
+                        new_id = app.add_order(table, client_id, staff_id, status)
+                        print(f"✅ Заказ создан с ID {new_id}")
                     except Exception as e:
                         print(f"Ошибка: {e}")
                 elif sub == '3':
