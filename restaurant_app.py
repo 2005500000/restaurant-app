@@ -8,7 +8,7 @@ class RestaurantApp:
     def connect(self):
         """Устанавливает соединение с БД"""
         self.connection = sqlite3.connect(DATABASE_FILE)
-        self.connection.row_factory = sqlite3.Row  # чтобы результаты были как словари
+        self.connection.row_factory = sqlite3.Row
         return self.connection
 
     def close(self):
@@ -19,7 +19,7 @@ class RestaurantApp:
     def get_all_categories(self):
         conn = self.connect()
         cursor = conn.cursor()
-        cursor.execute("SELECT idCategory, Category_name FROM Category")
+        cursor.execute("SELECT idCategory, Category_name, Poryadok_otobrazhenia, Activnost, Category_photo FROM Category ORDER BY idCategory")
         rows = cursor.fetchall()
         self.close()
         return [dict(row) for row in rows]
@@ -70,7 +70,6 @@ class RestaurantApp:
     def add_menu_item(self, name, cost, weight, category_id):
         conn = self.connect()
         cursor = conn.cursor()
-        # Вычисляем новый idBluda
         cursor.execute("SELECT MAX(idBluda) FROM Menu")
         max_id = cursor.fetchone()[0]
         new_id = (max_id or 0) + 1
@@ -99,42 +98,11 @@ class RestaurantApp:
         conn.commit()
         self.close()
 
-    # -------------------- Аналитические запросы --------------------
-    def top_popular_dishes(self, limit=5):
-        conn = self.connect()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT m.name, SUM(sz.Kolitchestvo) AS total_sold
-            FROM Menu m
-            JOIN SostavZakaza sz ON m.idBluda = sz.idBluda
-            GROUP BY m.idBluda
-            ORDER BY total_sold DESC
-            LIMIT ?
-        """, (limit,))
-        rows = cursor.fetchall()
-        self.close()
-        return [dict(row) for row in rows]
-
-    def revenue_by_staff_and_period(self, staff_id, start_date, end_date):
-        conn = self.connect()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT COALESCE(SUM(sz.Cost * sz.Kolitchestvo), 0) AS revenue
-            FROM Staff s
-            LEFT JOIN Zakaz z ON s.Staff_id = z.idSotrudnika AND z.Status = 'Завершен'
-            LEFT JOIN SostavZakaza sz ON z.idZakaz = sz.idZakaza
-            WHERE s.Staff_id = ?
-              AND DATE(z.data_and_time) BETWEEN ? AND ?
-        """, (staff_id, start_date, end_date))
-        row = cursor.fetchone()
-        self.close()
-        return row[0] if row else 0
-
-    # -------------------- CRUD для Client (Клиенты) --------------------
+    # -------------------- CRUD для Client --------------------
     def get_all_clients(self):
         conn = self.connect()
         cursor = conn.cursor()
-        cursor.execute("SELECT idClient, FIO, Phone, Email, Kolitchestvo_poseshenii FROM Client ORDER BY FIO")
+        cursor.execute("SELECT idClient, FIO, Phone, Email, Kolitchestvo_poseshenii FROM Client ORDER BY idClient")
         rows = cursor.fetchall()
         self.close()
         return [dict(row) for row in rows]
@@ -170,7 +138,7 @@ class RestaurantApp:
         conn.commit()
         self.close()
 
-    # -------------------- CRUD для Staff (Сотрудники) с должностью --------------------
+    # -------------------- CRUD для Staff (с должностью через JOIN) --------------------
     def get_all_staff(self):
         conn = self.connect()
         cursor = conn.cursor()
@@ -178,7 +146,7 @@ class RestaurantApp:
             SELECT s.Staff_id, s.FIO, d.Dolzhnost_name, s.Salary, s.DataPrioma
             FROM Staff s
             JOIN Dolzhnost d ON s.idDolzhnost = d.idDolzhnost
-            ORDER BY s.FIO
+            ORDER BY s.Staff_id
         """)
         rows = cursor.fetchall()
         self.close()
@@ -216,20 +184,18 @@ class RestaurantApp:
         self.close()
 
     def get_all_dolzhnosti(self):
-        """Справочник должностей для выбора при редактировании сотрудника"""
         conn = self.connect()
         cursor = conn.cursor()
-        cursor.execute("SELECT idDolzhnost, Dolzhnost_name FROM Dolzhnost")
+        cursor.execute("SELECT idDolzhnost, Dolzhnost_name FROM Dolzhnost ORDER BY idDolzhnost")
         rows = cursor.fetchall()
         self.close()
         return [dict(row) for row in rows]
 
-    # -------------------- CRUD для Postavshik (Поставщики) --------------------
+    # -------------------- CRUD для Postavshik --------------------
     def get_all_postavshiki(self):
         conn = self.connect()
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT idPostavshika, Company_name, phone, adres, YsloviaOplatv FROM Postavshik ORDER BY Company_name")
+        cursor.execute("SELECT idPostavshika, Company_name, phone, adres, YsloviaOplatv FROM Postavshik ORDER BY Company_name")
         rows = cursor.fetchall()
         self.close()
         return [dict(row) for row in rows]
@@ -265,18 +231,28 @@ class RestaurantApp:
         conn.commit()
         self.close()
 
-    # -------------------- CRUD для Zakaz (Заказы) с JOIN клиента и сотрудника --------------------
+    # -------------------- CRUD для Zakaz (с JOIN клиента и сотрудника) --------------------
     def get_all_orders(self):
-        """Выводит заказы с ФИО клиента и ФИО сотрудника вместо ID"""
+        """
+        Возвращает все заказы с ФИО клиента, ФИО сотрудника и суммой.
+        Используется LEFT JOIN и COALESCE, чтобы заказы без позиций отображались с суммой 0.
+        """
         conn = self.connect()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT z.idZakaz, z.table_number, z.data_and_time,
-                   c.FIO AS ClientName, s.FIO AS StaffName, z.Status,
-                   (SELECT SUM(sz.Cost * sz.Kolitchestvo) FROM SostavZakaza sz WHERE sz.idZakaza = z.idZakaz) AS TotalSum
+            SELECT
+                z.idZakaz,
+                z.table_number,
+                z.data_and_time,
+                c.FIO AS ClientName,
+                s.FIO AS StaffName,
+                z.Status,
+                COALESCE(SUM(sz.Cost * sz.Kolitchestvo), 0) AS TotalSum
             FROM Zakaz z
             JOIN Client c ON z.idClient = c.idClient
             JOIN Staff s ON z.idSotrudnika = s.Staff_id
+            LEFT JOIN SostavZakaza sz ON z.idZakaz = sz.idZakaza
+            GROUP BY z.idZakaz, z.table_number, z.data_and_time, c.FIO, s.FIO, z.Status
             ORDER BY z.idZakaz
         """)
         rows = cursor.fetchall()
@@ -285,8 +261,8 @@ class RestaurantApp:
 
     def add_order(self, table_num, client_id, staff_id, status, items=None):
         """
-        items: список кортежей (idBluda, quantity) – опционально, если нужно сразу добавить позиции.
-        Сначала создаём заказ, потом, если items передан, добавляем в SostavZakaza.
+        Создаёт новый заказ. Если items передан (список кортежей (idBluda, quantity)),
+        то добавляет позиции в SostavZakaza.
         """
         conn = self.connect()
         cursor = conn.cursor()
@@ -299,7 +275,6 @@ class RestaurantApp:
         )
         if items:
             for dish_id, qty in items:
-                # получить цену блюда
                 cursor.execute("SELECT cost FROM Menu WHERE idBluda = ?", (dish_id,))
                 price = cursor.fetchone()[0]
                 cursor.execute("SELECT MAX(idPozitsii) FROM SostavZakaza")
@@ -326,8 +301,39 @@ class RestaurantApp:
     def delete_order(self, order_id):
         conn = self.connect()
         cursor = conn.cursor()
-        # сначала нужно удалить связанные позиции, иначе внешний ключ помешает
+        # Удаляем связанные позиции, чтобы не нарушить внешний ключ
         cursor.execute("DELETE FROM SostavZakaza WHERE idZakaza=?", (order_id,))
         cursor.execute("DELETE FROM Zakaz WHERE idZakaz=?", (order_id,))
         conn.commit()
         self.close()
+
+    # -------------------- Аналитические запросы --------------------
+    def top_popular_dishes(self, limit=5):
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT m.name, COALESCE(SUM(sz.Kolitchestvo), 0) AS total_sold
+            FROM Menu m
+            LEFT JOIN SostavZakaza sz ON m.idBluda = sz.idBluda
+            GROUP BY m.idBluda
+            ORDER BY total_sold DESC
+            LIMIT ?
+        """, (limit,))
+        rows = cursor.fetchall()
+        self.close()
+        return [dict(row) for row in rows]
+
+    def revenue_by_staff_and_period(self, staff_id, start_date, end_date):
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COALESCE(SUM(sz.Cost * sz.Kolitchestvo), 0) AS revenue
+            FROM Staff s
+            LEFT JOIN Zakaz z ON s.Staff_id = z.idSotrudnika AND z.Status = 'Завершен'
+            LEFT JOIN SostavZakaza sz ON z.idZakaz = sz.idZakaza
+            WHERE s.Staff_id = ?
+              AND DATE(z.data_and_time) BETWEEN ? AND ?
+        """, (staff_id, start_date, end_date))
+        row = cursor.fetchone()
+        self.close()
+        return row[0] if row else 0
